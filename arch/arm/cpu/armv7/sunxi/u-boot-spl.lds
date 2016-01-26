@@ -29,6 +29,10 @@ SECTIONS
 		__start = .;
 		*(.vectors)
 		arch/arm/cpu/armv7/start.o	(.text)
+#ifdef CONFIG_MACH_SUN50I_H5_32
+		../libdram-h5 (.text)
+		../libchipid-h5 (.text)
+#endif
 		*(.text*)
 	} > .sram
 
