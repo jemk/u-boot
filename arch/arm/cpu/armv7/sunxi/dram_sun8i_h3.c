@@ -18,6 +18,8 @@
 struct dram_para {
 	u32 read_delays;
 	u32 write_delays;
+	u32 zqdr_ac;
+	u32 zqdr_dx;
 	u16 page_size;
 	u8 bus_width;
 	u8 dual_rank;
@@ -278,11 +280,22 @@ static void mctl_zq_calibration(struct dram_para *para)
 		zq_val[i] |= bin_to_mgray(mgray_to_bin(val) - 1) << 8;
 	}
 
-	writel((zq_val[1] << 16) | zq_val[0], &mctl_ctl->zqdr[0]);
-	writel((zq_val[3] << 16) | zq_val[2], &mctl_ctl->zqdr[1]);
-	writel((zq_val[5] << 16) | zq_val[4], &mctl_ctl->zqdr[2]);
+	/* If we have fixed zq data, set it now. Running a normal calibration
+	   first seems necessary to send a zqcal command to the DDR chips */
+	if (para->zqdr_ac && para->zqdr_dx)
+	{
+		writel(para->zqdr_ac, &mctl_ctl->zqdr[0]);
+		writel(para->zqdr_dx, &mctl_ctl->zqdr[1]);
+		writel(para->zqdr_dx, &mctl_ctl->zqdr[2]);
+	}
+	else
+	{
+		writel((zq_val[1] << 16) | zq_val[0], &mctl_ctl->zqdr[0]);
+		writel((zq_val[3] << 16) | zq_val[2], &mctl_ctl->zqdr[1]);
+		writel((zq_val[5] << 16) | zq_val[4], &mctl_ctl->zqdr[2]);
 
-	dump_zq();
+		dump_zq();
+	}
 }
 
 static void mctl_set_cr(struct dram_para *para)
@@ -475,6 +488,8 @@ unsigned long sunxi_dram_init(void)
 	struct dram_para para = {
 		.read_delays = 0x00007979,	/* dram_tpr12 */
 		.write_delays = 0x6aaa0000,	/* dram_tpr11 */
+		.zqdr_ac = 0x1a18080b,
+		.zqdr_dx = 0x0407090b,
 		.dual_rank = 0,
 		.bus_width = 32,
 		.row_bits = 15,
