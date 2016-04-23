@@ -212,6 +212,41 @@ static void mctl_set_timing_params(struct dram_para *para)
 	writel(RFSHTMG_TREFI(trefi) | RFSHTMG_TRFC(trfc), &mctl_ctl->rfshtmg);
 }
 
+static void dump_zq(void)
+{
+	struct sunxi_mctl_ctl_reg * const mctl_ctl =
+			(struct sunxi_mctl_ctl_reg *)SUNXI_DRAM_CTL0_BASE;
+
+	int i;
+	u32 status, zqdr[3];
+	static const char *mod[3] = { "control", "DX0/DX1", "DX2/DX3" };
+	static const char *error[4] = { "\t", "overflow",
+					"underflow", "in progress" };
+
+	status = readl(&mctl_ctl->zqsr);
+	printf("\n== ZQ calibration %s %s ==\n",
+			(status & (1 << 31)) ? "DONE" : "",
+			(status & (1 << 30)) ? "ERROR" : "");
+
+	printf("\n\tODT pull-up\tODT pull-down\tDRV pull-up\tDRV pull-down\n");
+
+	for (i = 0; i < 3; i++)
+	{
+		zqdr[i] = readl(&mctl_ctl->zqdr[i]);
+		printf("%s\t%2u  %s\t%2u  %s\t%2u  %s\t%2u  %s\n", mod[i],
+					mgray_to_bin((zqdr[i] >> 24) & 0x1f),
+					error[(status >> (i * 8 + 6)) & 0x3],
+					mgray_to_bin((zqdr[i] >> 16) & 0x1f),
+					error[(status >> (i * 8 + 4)) & 0x3],
+					mgray_to_bin((zqdr[i] >> 8) & 0x1f),
+					error[(status >> (i * 8 + 2)) & 0x3],
+					mgray_to_bin((zqdr[i] >> 0) & 0x1f),
+					error[(status >> (i * 8 + 0)) & 0x3]);
+	}
+
+	printf("\nZQDR: %08x %08x %08x\n", zqdr[0], zqdr[1], zqdr[2]);
+}
+
 static void mctl_zq_calibration(struct dram_para *para)
 {
 	struct sunxi_mctl_ctl_reg * const mctl_ctl =
@@ -246,6 +281,8 @@ static void mctl_zq_calibration(struct dram_para *para)
 	writel((zq_val[1] << 16) | zq_val[0], &mctl_ctl->zqdr[0]);
 	writel((zq_val[3] << 16) | zq_val[2], &mctl_ctl->zqdr[1]);
 	writel((zq_val[5] << 16) | zq_val[4], &mctl_ctl->zqdr[2]);
+
+	dump_zq();
 }
 
 static void mctl_set_cr(struct dram_para *para)
