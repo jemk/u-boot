@@ -61,7 +61,8 @@ static void mctl_phy_init(u32 val)
 			(struct sunxi_mctl_ctl_reg *)SUNXI_DRAM_CTL0_BASE;
 
 	writel(val | PIR_INIT, &mctl_ctl->pir);
-	mctl_await_completion(&mctl_ctl->pgsr[0], PGSR_INIT_DONE, 0x1);
+	mctl_await_completion(&mctl_ctl->pgsr[0], PGSR0_INIT_DONE,
+						  PGSR0_INIT_DONE);
 }
 
 static void mctl_dq_delay(u32 read, u32 write)
@@ -72,24 +73,24 @@ static void mctl_dq_delay(u32 read, u32 write)
 	u32 val;
 
 	for (i = 0; i < 4; i++) {
-		val = DATX_IOCR_WRITE_DELAY((write >> (i * 4)) & 0xf) |
-		      DATX_IOCR_READ_DELAY(((read >> (i * 4)) & 0xf) * 2);
+		val = DXBDLR_WBD((write >> (i * 4)) & 0xf) |
+		      DXBDLR_RBD(((read >> (i * 4)) & 0xf) * 2);
 
-		for (j = DATX_IOCR_DQ(0); j <= DATX_IOCR_DM; j++)
-			writel(val, &mctl_ctl->datx[i].iocr[j]);
+		for (j = DXBDLR_DQ_IDX(0); j <= DXBDLR_DM_IDX; j++)
+			writel(val, &mctl_ctl->dx[i].bdlr[j]);
 	}
 
-	clrbits_le32(&mctl_ctl->pgcr[0], 1 << 26);
+	clrbits_le32(&mctl_ctl->pgcr[0], PGCR0_PHYFRST);
 
 	for (i = 0; i < 4; i++) {
-		val = DATX_IOCR_WRITE_DELAY((write >> (16 + i * 4)) & 0xf) |
-		      DATX_IOCR_READ_DELAY((read >> (16 + i * 4)) & 0xf);
+		val = DXBDLR_WBD((write >> (16 + i * 4)) & 0xf) |
+		      DXBDLR_RBD((read >> (16 + i * 4)) & 0xf);
 
-		writel(val, &mctl_ctl->datx[i].iocr[DATX_IOCR_DQS]);
-		writel(val, &mctl_ctl->datx[i].iocr[DATX_IOCR_DQSN]);
+		writel(val, &mctl_ctl->dx[i].bdlr[DXBDLR_DQS_IDX]);
+		writel(val, &mctl_ctl->dx[i].bdlr[DXBDLR_DQSN_IDX]);
 	}
 
-	setbits_le32(&mctl_ctl->pgcr[0], 1 << 26);
+	setbits_le32(&mctl_ctl->pgcr[0], PGCR0_PHYFRST);
 
 	udelay(1);
 }
@@ -180,13 +181,13 @@ static void mctl_set_timing_params(struct dram_para *para)
 	writel(0x0, &mctl_ctl->mr[3]);
 
 	/* set DRAM timing */
-	writel(DRAMTMG0_TWTP(twtp) | DRAMTMG0_TFAW(tfaw) |
+	writel(DRAMTMG0_WR2PRE(twtp) | DRAMTMG0_TFAW(tfaw) |
 	       DRAMTMG0_TRAS_MAX(trasmax) | DRAMTMG0_TRAS(tras),
 	       &mctl_ctl->dramtmg[0]);
-	writel(DRAMTMG1_TXP(txp) | DRAMTMG1_TRTP(trtp) | DRAMTMG1_TRC(trc),
+	writel(DRAMTMG1_TXP(txp) | DRAMTMG1_RD2PRE(trtp) | DRAMTMG1_TRC(trc),
 	       &mctl_ctl->dramtmg[1]);
-	writel(DRAMTMG2_TCWL(tcwl) | DRAMTMG2_TCL(tcl) |
-	       DRAMTMG2_TRD2WR(trd2wr) | DRAMTMG2_TWR2RD(twr2rd),
+	writel(DRAMTMG2_WR_LATENCY(tcwl) | DRAMTMG2_RD_LATENCY(tcl) |
+	       DRAMTMG2_RD2WR(trd2wr) | DRAMTMG2_WR2RD(twr2rd),
 	       &mctl_ctl->dramtmg[2]);
 	writel(DRAMTMG3_TMRW(tmrw) | DRAMTMG3_TMRD(tmrd) | DRAMTMG3_TMOD(tmod),
 	       &mctl_ctl->dramtmg[3]);
@@ -201,8 +202,9 @@ static void mctl_set_timing_params(struct dram_para *para)
 			(0x66 << 8) | (0x10 << 0));
 
 	/* set PHY interface timing, write latency and read latency configure */
-	writel((0x2 << 24) | (t_rdata_en << 16) | (0x1 << 8) |
-	       (wr_latency << 0), &mctl_ctl->pitmg[0]);
+	writel(DFITMG0_CTRL_DELAY(2) | DFITMG0_RDDATA_EN(t_rdata_en) |
+	       DFITMG0_PHY_WRDATA(1) | DFITMG0_PHY_WRLAT(wr_latency),
+	       &mctl_ctl->dfitmg[0]);
 
 	/* set PHY timing, PTR0-2 use default */
 	writel(PTR3_TDINIT0(tdinit0) | PTR3_TDINIT1(tdinit1), &mctl_ctl->ptr[3]);
@@ -316,13 +318,13 @@ static int mctl_channel_init(struct dram_para *para)
 	/* increase DFI_PHY_UPD clock */
 	writel(PROTECT_MAGIC, &mctl_com->protect);
 	udelay(100);
-	clrsetbits_le32(&mctl_ctl->upd2, 0xfff << 16, 0x50 << 16);
+	clrsetbits_le32(&mctl_ctl->dfiupd[2], 0xfff << 16, 0x50 << 16);
 	writel(0x0, &mctl_com->protect);
 	udelay(100);
 
 	/* set dramc odt */
 	for (i = 0; i < 4; i++)
-		clrsetbits_le32(&mctl_ctl->datx[i].gcr, (0x3 << 4) |
+		clrsetbits_le32(&mctl_ctl->dx[i].gcr, (0x3 << 4) |
 				(0x1 << 1) | (0x3 << 2) | (0x3 << 12) |
 				(0x3 << 14),
 				IS_ENABLED(CONFIG_DRAM_ODT_EN) ? 0x0 : 0x2);
@@ -342,8 +344,8 @@ static int mctl_channel_init(struct dram_para *para)
 
 	/* set half DQ */
 	if (para->bus_width != 32) {
-		writel(0x0, &mctl_ctl->datx[2].gcr);
-		writel(0x0, &mctl_ctl->datx[3].gcr);
+		writel(0x0, &mctl_ctl->dx[2].gcr);
+		writel(0x0, &mctl_ctl->dx[3].gcr);
 	}
 
 	/* data training configuration */
@@ -364,17 +366,17 @@ static int mctl_channel_init(struct dram_para *para)
 	/* detect ranks and bus width */
 	if (readl(&mctl_ctl->pgsr[0]) & (0xfe << 20)) {
 		/* only one rank */
-		if (((readl(&mctl_ctl->datx[0].gsr[0]) >> 24) & 0x2) ||
-		    ((readl(&mctl_ctl->datx[1].gsr[0]) >> 24) & 0x2)) {
+		if (((readl(&mctl_ctl->dx[0].gsr[0]) >> 24) & 0x2) ||
+		    ((readl(&mctl_ctl->dx[1].gsr[0]) >> 24) & 0x2)) {
 			clrsetbits_le32(&mctl_ctl->dtcr, 0xf << 24, 0x1 << 24);
 			para->dual_rank = 0;
 		}
 
 		/* only half DQ width */
-		if (((readl(&mctl_ctl->datx[2].gsr[0]) >> 24) & 0x1) ||
-		    ((readl(&mctl_ctl->datx[3].gsr[0]) >> 24) & 0x1)) {
-			writel(0x0, &mctl_ctl->datx[2].gcr);
-			writel(0x0, &mctl_ctl->datx[3].gcr);
+		if (((readl(&mctl_ctl->dx[2].gsr[0]) >> 24) & 0x1) ||
+		    ((readl(&mctl_ctl->dx[3].gsr[0]) >> 24) & 0x1)) {
+			writel(0x0, &mctl_ctl->dx[2].gcr);
+			writel(0x0, &mctl_ctl->dx[3].gcr);
 			para->bus_width = 16;
 		}
 
@@ -388,7 +390,7 @@ static int mctl_channel_init(struct dram_para *para)
 	}
 
 	/* check the dramc status */
-	mctl_await_completion(&mctl_ctl->statr, 0x1, 0x1);
+	mctl_await_completion(&mctl_ctl->stat, 0x1, 0x1);
 
 	/* liuke added for refresh debug */
 	setbits_le32(&mctl_ctl->rfshctl0, 0x1 << 31);
