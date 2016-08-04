@@ -16,12 +16,13 @@
 #include <linux/kconfig.h>
 
 struct dram_para {
-	u32 read_delays;
-	u32 write_delays;
 	u16 page_size;
 	u8 bus_width;
 	u8 dual_rank;
 	u8 row_bits;
+	const u8 dx_read_delays[4][11];
+	const u8 dx_write_delays[4][11];
+	const u8 ac_delays[31];
 };
 
 static inline int ns_to_t(int nanoseconds)
@@ -64,34 +65,25 @@ static void mctl_phy_init(u32 val)
 	mctl_await_completion(&mctl_ctl->pgsr[0], PGSR_INIT_DONE, 0x1);
 }
 
-static void mctl_dq_delay(u32 read, u32 write)
+static void mctl_set_bit_delays(struct dram_para *para)
 {
 	struct sunxi_mctl_ctl_reg * const mctl_ctl =
 			(struct sunxi_mctl_ctl_reg *)SUNXI_DRAM_CTL0_BASE;
 	int i, j;
-	u32 val;
-
-	for (i = 0; i < 4; i++) {
-		val = DXBDLR_WRITE_DELAY((write >> (i * 4)) & 0xf) |
-		      DXBDLR_READ_DELAY(((read >> (i * 4)) & 0xf) * 2);
-
-		for (j = DXBDLR_DQ(0); j <= DXBDLR_DM; j++)
-			writel(val, &mctl_ctl->dx[i].bdlr[j]);
-	}
 
 	clrbits_le32(&mctl_ctl->pgcr[0], 1 << 26);
 
-	for (i = 0; i < 4; i++) {
-		val = DXBDLR_WRITE_DELAY((write >> (16 + i * 4)) & 0xf) |
-		      DXBDLR_READ_DELAY((read >> (16 + i * 4)) & 0xf);
+	for (i = 0; i < 4; i++)
+		for (j = 0; j < 11; j++)
+			writel(DXBDLR_WRITE_DELAY(para->dx_write_delays[i][j]) |
+			       DXBDLR_READ_DELAY(para->dx_read_delays[i][j]),
+			       &mctl_ctl->dx[i].bdlr[j]);
 
-		writel(val, &mctl_ctl->dx[i].bdlr[DXBDLR_DQS]);
-		writel(val, &mctl_ctl->dx[i].bdlr[DXBDLR_DQSN]);
-	}
+	for (i = 0; i < 31; i++)
+		writel(ACBDLR_WRITE_DELAY(para->ac_delays[i]),
+		       &mctl_ctl->acbdlr[i]);
 
 	setbits_le32(&mctl_ctl->pgcr[0], 1 << 26);
-
-	udelay(1);
 }
 
 static void mctl_set_master_priority(void)
@@ -350,11 +342,8 @@ static int mctl_channel_init(struct dram_para *para)
 	clrsetbits_le32(&mctl_ctl->dtcr, 0xf << 24,
 			(para->dual_rank ? 0x3 : 0x1) << 24);
 
-
-	if (para->read_delays || para->write_delays) {
-		mctl_dq_delay(para->read_delays, para->write_delays);
-		udelay(50);
-	}
+	mctl_set_bit_delays(para);
+	udelay(50);
 
 	mctl_zq_calibration(para);
 
@@ -436,12 +425,23 @@ unsigned long sunxi_dram_init(void)
 			(struct sunxi_mctl_ctl_reg *)SUNXI_DRAM_CTL0_BASE;
 
 	struct dram_para para = {
-		.read_delays = 0x00007979,	/* dram_tpr12 */
-		.write_delays = 0x6aaa0000,	/* dram_tpr11 */
 		.dual_rank = 0,
 		.bus_width = 32,
 		.row_bits = 15,
 		.page_size = 4096,
+
+		.dx_read_delays =  {{ 18, 18, 18, 18, 18, 18, 18, 18, 18,  0,  0 },
+		                    { 14, 14, 14, 14, 14, 14, 14, 14, 14,  0,  0 },
+		                    { 18, 18, 18, 18, 18, 18, 18, 18, 18,  0,  0 },
+		                    { 14, 14, 14, 14, 14, 14, 14, 14, 14,  0,  0 }},
+		.dx_write_delays = {{  0,  0,  0,  0,  0,  0,  0,  0,  0, 10, 10 },
+		                    {  0,  0,  0,  0,  0,  0,  0,  0,  0, 10, 10 },
+		                    {  0,  0,  0,  0,  0,  0,  0,  0,  0, 10, 10 },
+		                    {  0,  0,  0,  0,  0,  0,  0,  0,  0,  6,  6 }},
+		.ac_delays = {  0,  0,  0,  0,  0,  0,  0,  0,
+		                0,  0,  0,  0,  0,  0,  0,  0,
+		                0,  0,  0,  0,  0,  0,  0,  0,
+		                0,  0,  0,  0,  0,  0,  0      },
 	};
 
 	mctl_sys_init(&para);
