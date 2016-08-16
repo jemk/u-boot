@@ -69,7 +69,7 @@ static void mctl_set_master_priority(void)
 
 #if defined(CONFIG_MACH_SUN8I_H3)
 	/* enable bandwidth limit windows and set windows size 1us */
-	writel(0x00010190, &mctl_com->bwcr);
+	writel((1 << 16) | (400 < 0), &mctl_com->bwcr);
 
 	/* set cpu high priority */
 	writel(0x00000001, &mctl_com->mapr);
@@ -100,8 +100,8 @@ static void mctl_set_master_priority(void)
 	writel(0x00400120, &mctl_com->mcr[11][1]);
 #elif defined(CONFIG_MACH_SUN50I)
 	/* enable bandwidth limit windows and set windows size 1us */
-	writel(399, &mctl_com->unk_0c);
-	writel(0x00010000, &mctl_com->bwcr);
+	writel(399, &mctl_com->tmr);
+	writel((1 << 16), &mctl_com->bwcr);
 
 	writel(0x00a0000d, &mctl_com->mcr[0][0]);
 	writel(0x00500064, &mctl_com->mcr[0][1]);
@@ -128,7 +128,7 @@ static void mctl_set_master_priority(void)
 	writel(0x05000009, &mctl_com->mcr[11][0]);
 	writel(0x00400090, &mctl_com->mcr[11][1]);
 
-	writel(0x81000004, &mctl_com->unk_130);
+	writel(0x81000004, &mctl_com->mdfs_bwlr[2]);
 #endif
 }
 
@@ -382,8 +382,6 @@ static int mctl_channel_init(struct dram_para *para)
 	/* dphy & aphy phase select ? */
 	clrsetbits_le32(&mctl_ctl->pgcr[2], (0x3 << 10) | (0x3 << 8) |
 	               (0x3 << 12), (0x0 << 10) | (0x3 << 8));
-
-	writel(0x0000021f, &mctl_ctl->unk_b8);
 #endif
 
 	/* set half DQ */
@@ -537,6 +535,10 @@ unsigned long sunxi_dram_init(void)
 #ifdef CONFIG_MACH_SUN8I_H3
 	/* odt delay */
 	writel(0x0c000400, &mctl_ctl->odtcfg);
+#endif
+
+#ifdef CONFIG_MACH_SUN50I
+	setbits_le32(&mctl_ctl->vtfcr, (1 << 9));
 #endif
 
 	/* clear credit value */
