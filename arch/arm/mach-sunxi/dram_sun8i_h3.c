@@ -380,8 +380,8 @@ static int mctl_channel_init(struct dram_para *para)
 			(0x1 << 10) | (0x2 << 8));
 #elif defined(CONFIG_MACH_SUN50I)
 	/* dphy & aphy phase select ? */
-	clrsetbits_le32(&mctl_ctl->pgcr[2], (0x3 << 10) | (0x3 << 8) |
-	               (0x3 << 12), (0x0 << 10) | (0x3 << 8));
+	clrsetbits_le32(&mctl_ctl->pgcr[2], (0x3 << 10) | (0x3 << 8),
+			(0x0 << 10) | (0x3 << 8));
 #endif
 
 	/* set half DQ */
@@ -539,6 +539,7 @@ unsigned long sunxi_dram_init(void)
 
 #ifdef CONFIG_MACH_SUN50I
 	setbits_le32(&mctl_ctl->vtfcr, (1 << 9));
+	clrbits_le32(&mctl_ctl->pgcr[2], (1 << 13));
 #endif
 
 	/* clear credit value */
