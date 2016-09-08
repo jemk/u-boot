@@ -294,7 +294,7 @@ static void mctl_sys_init(struct dram_para *para)
 	setbits_le32(&ccm->dram_clk_cfg, CCM_DRAMCLK_CFG_RST);
 	udelay(10);
 
-	writel(0xc00e, &mctl_ctl->clken);
+	writel(0xc00f, &mctl_ctl->clken);
 	udelay(500);
 }
 
@@ -336,7 +336,7 @@ static int mctl_channel_init(struct dram_para *para)
 	setbits_le32(&mctl_ctl->pgcr[2], 0x3 << 6);
 
 	/* dx ddr_clk & hdr_clk dynamic mode */
-	clrbits_le32(&mctl_ctl->pgcr[0], (0x3 << 14) | (0x3 << 12));
+	//clrbits_le32(&mctl_ctl->pgcr[0], (0x3 << 14) | (0x3 << 12));
 
 	/* dphy & aphy phase select 270 degree */
 	clrsetbits_le32(&mctl_ctl->pgcr[2], (0x3 << 10) | (0x3 << 8),
@@ -391,6 +391,63 @@ static int mctl_channel_init(struct dram_para *para)
 
 	/* check the dramc status */
 	mctl_await_completion(&mctl_ctl->stat, 0x1, 0x1);
+
+#if 1
+	writel(PROTECT_MAGIC, &mctl_com->protect);
+	udelay(100);
+
+	const int dqs_shift = 31;
+	int j, lane, delay;
+	u32 mask;
+
+	printf("\nclk = %d, dqs_shift = %d, mdl = %d %d %d %d",
+		CONFIG_DRAM_CLK, dqs_shift,
+		readl(&mctl_ctl->dx[0].mdlr) & 0xff, readl(&mctl_ctl->dx[1].mdlr) & 0xff,
+		readl(&mctl_ctl->dx[2].mdlr) & 0xff, readl(&mctl_ctl->dx[3].mdlr) & 0xff);
+
+	for (mask = 0x1; mask != 0; mask <<= 1)
+	{
+		printf("\n");
+		for (lane = 0; lane < (para->bus_width == 16 ? 2 : 4); lane++)
+		{
+			printf(" ");
+			for (delay = 0; delay < 64 + dqs_shift; delay++)
+			{
+				clrbits_le32(&mctl_ctl->pgcr[0], PGCR0_PHYFRST);
+				for (i = 0; i < 4; i++)	{
+					clrsetbits_le32(&mctl_ctl->dx[i].bdlr[DXBDLR_DQS_IDX], DXBDLR_RBD(0x3f), DXBDLR_RBD(max(0, dqs_shift - delay)));
+					clrsetbits_le32(&mctl_ctl->dx[i].bdlr[DXBDLR_DQSN_IDX], DXBDLR_RBD(0x3f), DXBDLR_RBD(max(0, dqs_shift - delay)));
+					for (j = DXBDLR_DQ_IDX(0); j <= DXBDLR_DM_IDX; j++)
+						clrsetbits_le32(&mctl_ctl->dx[i].bdlr[j], DXBDLR_RBD(0x3f), DXBDLR_RBD(max(0, delay - dqs_shift)));
+				}
+				setbits_le32(&mctl_ctl->pgcr[0], PGCR0_PHYFRST);
+				udelay(50);
+
+				writel(0xffff, &mctl_ctl->bistwcr);
+				writel(BISTAR0_BBANK(0x0)| BISTAR0_BROW(0x0) | BISTAR0_BCOL(0x0), &mctl_ctl->bistar[0]);
+				writel(BISTAR1_BAINC(0x8), &mctl_ctl->bistar[1]);
+				writel(BISTAR2_BMBANK(0x7)| BISTAR2_BMROW(0x3fff) | BISTAR2_BMCOL(0x3f8), &mctl_ctl->bistar[2]);
+				writel(~mask, &mctl_ctl->bistmskr[2]);
+				writel(0x1234abcd, &mctl_ctl->bistlsr);
+
+				writel(BISTRR_BINST_RUN | BISTRR_BMODE_DRAM | BISTRR_BDXEN | BISTRR_BDPAT_LFSR | BISTRR_BDXSEL(lane), &mctl_ctl->bistrr);
+				udelay(1000);
+				while ((readl(&mctl_ctl->bistgsr) & BISTGSR_BDONE) != BISTGSR_BDONE);
+				udelay(10);
+
+				if (readl(&mctl_ctl->bistgsr) & BISTGSR_BDXERR)
+					printf("%x", (readl(&mctl_ctl->bistwer) >> BISTWER_DXWER_SHIFT) / 0x1111);
+				else
+					printf(".");
+
+				writel(BISTRR_BINST_RESET, &mctl_ctl->bistrr);
+				udelay(10);
+			}
+		}
+	}
+
+	reset_cpu(0); /* We have messed up everyting ;) */
+#endif
 
 	/* liuke added for refresh debug */
 	setbits_le32(&mctl_ctl->rfshctl0, 0x1 << 31);
