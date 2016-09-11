@@ -123,6 +123,11 @@ static int get_aligned_image_size(struct spl_load_info *info, int data_size,
 	return (data_size + info->bl_len - 1) / info->bl_len;
 }
 
+__weak u8 spl_genimg_get_arch_id(const char *arch_str)
+{
+	return IH_ARCH_DEFAULT;
+}
+
 int spl_load_simple_fit(struct spl_image_info *spl_image,
 			struct spl_load_info *info, ulong sector, void *fit)
 {
@@ -136,6 +141,7 @@ int spl_load_simple_fit(struct spl_image_info *spl_image,
 	int base_offset, align_len = ARCH_DMA_MINALIGN - 1;
 	int src_sector;
 	void *dst, *src;
+	const char *arch_str;
 
 	/*
 	 * Figure out where the external images start. This is the base for the
@@ -184,10 +190,12 @@ int spl_load_simple_fit(struct spl_image_info *spl_image,
 	data_offset = fdt_getprop_u32(fit, node, "data-offset");
 	data_size = fdt_getprop_u32(fit, node, "data-size");
 	load = fdt_getprop_u32(fit, node, "load");
+	arch_str = fdt_getprop(fit, node, "arch", NULL);
 	debug("data_offset=%x, data_size=%x\n", data_offset, data_size);
 	spl_image->load_addr = load;
 	spl_image->entry_point = load;
 	spl_image->os = IH_OS_U_BOOT;
+	spl_image->arch = spl_genimg_get_arch_id(arch_str);
 
 	/*
 	 * Work out where to place the image. We read it so that the first
