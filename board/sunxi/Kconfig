@@ -51,6 +51,10 @@ config SUNXI_GEN_SUN6I
 	watchdog, etc.
 
 
+config MACH_SUN8I_H3
+	bool
+	select SUNXI_GEN_SUN6I
+
 choice
 	prompt "Sunxi SoC Variant"
 	optional
@@ -115,13 +119,13 @@ config MACH_SUN8I_A83T
 	select SUNXI_GEN_SUN6I
 	select SUPPORT_SPL
 
-config MACH_SUN8I_H3
+config MACH_SUN8I_H3_32
 	bool "sun8i (Allwinner H3)"
 	select CPU_V7
 	select CPU_V7_HAS_NONSEC
 	select CPU_V7_HAS_VIRT
 	select ARCH_SUPPORT_PSCI
-	select SUNXI_GEN_SUN6I
+	select MACH_SUN8I_H3
 	select SUPPORT_SPL
 	select ARMV7_BOOT_SEC_DEFAULT if OLD_SUNXI_KERNEL_COMPAT
 

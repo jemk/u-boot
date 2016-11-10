@@ -145,6 +145,10 @@ static int spl_board_load_image(struct spl_image_info *spl_image,
 SPL_LOAD_IMAGE_METHOD(0, BOOT_DEVICE_BOARD, spl_board_load_image);
 #endif
 
+__weak void tzpc_init(void)
+{
+}
+
 void s_init(void)
 {
 	/*
@@ -188,10 +192,9 @@ void s_init(void)
 		"mcr p15, 0, r0, c1, c0, 1\n"
 		::: "r0");
 #endif
-#if defined CONFIG_MACH_SUN6I || defined CONFIG_MACH_SUN8I_H3
-	/* Enable non-secure access to some peripherals */
+
+	/* Enable non-secure access to some peripherals (only if needed) */
 	tzpc_init();
-#endif
 
 	clock_init();
 	timer_init();
