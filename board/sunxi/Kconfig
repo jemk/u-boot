@@ -31,6 +31,10 @@ config SUNXI_HIGH_SRAM
 	bool
 	default n
 
+config SUNXI_NO_SMP
+	bool
+	default n
+
 # Note only one of these may be selected at a time! But hidden choices are
 # not supported by Kconfig
 config SUNXI_GEN_SUN4I
@@ -54,12 +58,14 @@ choice
 config MACH_SUN4I
 	bool "sun4i (Allwinner A10)"
 	select CPU_V7
+	select SUNXI_NO_SMP
 	select SUNXI_GEN_SUN4I
 	select SUPPORT_SPL
 
 config MACH_SUN5I
 	bool "sun5i (Allwinner A13)"
 	select CPU_V7
+	select SUNXI_NO_SMP
 	select SUNXI_GEN_SUN4I
 	select SUPPORT_SPL
 
