@@ -55,6 +55,12 @@ config MACH_SUN8I_H3
 	bool
 	select SUNXI_GEN_SUN6I
 
+config MACH_SUN50I_H5
+	bool
+	select SUNXI_GEN_SUN6I
+	select SUNXI_HIGH_SRAM
+	select MACH_SUN8I_H3
+
 choice
 	prompt "Sunxi SoC Variant"
 	optional
@@ -141,6 +147,11 @@ config MACH_SUN50I
 	select ARM64
 	select SUNXI_HIGH_SRAM
 	select SUNXI_GEN_SUN6I
+
+config MACH_SUN50I_H5_64
+	bool "sun50i (Allwinner H5)"
+	select ARM64
+	select MACH_SUN50I_H5
 
 endchoice
 
