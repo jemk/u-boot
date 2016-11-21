@@ -18,6 +18,7 @@
 struct dram_para {
 	u32 read_delays;
 	u32 write_delays;
+	u32 ac_delays;
 	u16 page_size;
 	u8 bus_width;
 	u8 dual_rank;
@@ -87,6 +88,9 @@ static void mctl_dq_delay(u32 read, u32 write)
 
 		writel(val, &mctl_ctl->datx[i].iocr[DATX_IOCR_DQS]);
 		writel(val, &mctl_ctl->datx[i].iocr[DATX_IOCR_DQSN]);
+#if defined(CONFIG_MACH_SUN50I_H5)
+		writel(((write >> (16 + i * 4)) & 0xf) << 24, &mctl_ctl->datx[i].bdlr6);
+#endif
 	}
 
 	setbits_le32(&mctl_ctl->pgcr[0], 1 << 26);
@@ -94,11 +98,26 @@ static void mctl_dq_delay(u32 read, u32 write)
 	udelay(1);
 }
 
+static void mctl_ac_delay(u32 delay)
+{
+	struct sunxi_mctl_ctl_reg * const mctl_ctl =
+			(struct sunxi_mctl_ctl_reg *)SUNXI_DRAM_CTL0_BASE;
+	int i;
+
+	for (i = 0; i < 10; i++)
+		setbits_le32(&mctl_ctl->acbdlr[12 + i], ((delay >> 4) & 0xf) << 8);
+
+	setbits_le32(&mctl_ctl->acbdlr[2], ((delay >> 0) & 0xf) << 8);
+	setbits_le32(&mctl_ctl->acbdlr[3], ((delay >> 8) & 0xf) << 8);
+	setbits_le32(&mctl_ctl->acbdlr[28], ((delay >> 12) & 0xf) << 8);
+}
+
 static void mctl_set_master_priority(void)
 {
 	struct sunxi_mctl_com_reg * const mctl_com =
 			(struct sunxi_mctl_com_reg *)SUNXI_DRAM_COM_BASE;
 
+#if defined(CONFIG_MACH_SUN8I_H3_32)
 	/* enable bandwidth limit windows and set windows size 1us */
 	writel(0x00010190, &mctl_com->bwcr);
 
@@ -129,6 +148,39 @@ static void mctl_set_master_priority(void)
 	writel(0x04001800, &mctl_com->mcr[10][1]);
 	writel(0x04000009, &mctl_com->mcr[11][0]);
 	writel(0x00400120, &mctl_com->mcr[11][1]);
+#elif defined(CONFIG_MACH_SUN50I_H5)
+	/* enable bandwidth limit windows and set windows size 1us */
+	writel(399, &mctl_com->tmr);
+	writel((1 << 16), &mctl_com->bwcr);
+
+	/* set cpu high priority */
+	writel(0x00000001, &mctl_com->mapr);
+
+	writel(0x012c000d, &mctl_com->mcr[0][0]);
+	writel(0x00960104, &mctl_com->mcr[0][1]);
+	writel(0x0258000d, &mctl_com->mcr[1][0]);
+	writel(0x00c80190, &mctl_com->mcr[1][1]);
+	writel(0x0200000d, &mctl_com->mcr[2][0]);
+	writel(0x00600100, &mctl_com->mcr[2][1]);
+	writel(0x0100000d, &mctl_com->mcr[3][0]);
+	writel(0x00200080, &mctl_com->mcr[3][1]);
+	writel(0x076c000d, &mctl_com->mcr[4][0]);
+	writel(0x03e805dc, &mctl_com->mcr[4][1]);
+	writel(0x0096000d, &mctl_com->mcr[5][0]);
+	writel(0x00640078, &mctl_com->mcr[5][1]);
+	writel(0x01000009, &mctl_com->mcr[6][0]);
+	writel(0x00400080, &mctl_com->mcr[6][1]);
+	writel(0x0100000d, &mctl_com->mcr[7][0]);
+	writel(0x00400080, &mctl_com->mcr[7][1]);
+	writel(0x0100000d, &mctl_com->mcr[8][0]);
+	writel(0x00400080, &mctl_com->mcr[8][1]);
+	writel(0x04000009, &mctl_com->mcr[9][0]);
+	writel(0x00400100, &mctl_com->mcr[9][1]);
+	writel(0x0d48030d, &mctl_com->mcr[10][0]);
+	writel(0x04000960, &mctl_com->mcr[10][1]);
+	writel(0x0258000d, &mctl_com->mcr[11][0]);
+	writel(0x00c80190, &mctl_com->mcr[11][1]);
+#endif
 }
 
 static void mctl_set_timing_params(struct dram_para *para)
@@ -197,8 +249,13 @@ static void mctl_set_timing_params(struct dram_para *para)
 	       &mctl_ctl->dramtmg[5]);
 
 	/* set two rank timing */
+#if defined(CONFIG_MACH_SUN50I_H5)
+	clrsetbits_le32(&mctl_ctl->dramtmg[8], (0xff << 8) | (0xff << 0),
+			(0x33 << 8) | (0x10 << 0));
+#else
 	clrsetbits_le32(&mctl_ctl->dramtmg[8], (0xff << 8) | (0xff << 0),
 			(0x66 << 8) | (0x10 << 0));
+#endif
 
 	/* set PHY interface timing, write latency and read latency configure */
 	writel((0x2 << 24) | (t_rdata_en << 16) | (0x1 << 8) |
@@ -314,7 +371,11 @@ static void mctl_sys_init(struct dram_para *para)
 	setbits_le32(&ccm->dram_clk_cfg, CCM_DRAMCLK_CFG_RST);
 	udelay(10);
 
+#if defined(CONFIG_MACH_SUN50I_H5)
+	writel(0x8000, &mctl_ctl->clken);
+#else
 	writel(0xc00e, &mctl_ctl->clken);
+#endif
 	udelay(500);
 }
 
@@ -333,7 +394,11 @@ static int mctl_channel_init(struct dram_para *para)
 
 	/* setting VTC, default disable all VT */
 	clrbits_le32(&mctl_ctl->pgcr[0], (1 << 30) | 0x3f);
+#if defined(CONFIG_MACH_SUN50I_H5)
+	setbits_le32(&mctl_ctl->pgcr[1], (1 << 24) | (1 << 26));
+#else
 	clrsetbits_le32(&mctl_ctl->pgcr[1], 1 << 24, 1 << 26);
+#endif
 
 	/* increase DFI_PHY_UPD clock */
 	writel(PROTECT_MAGIC, &mctl_com->protect);
@@ -344,13 +409,24 @@ static int mctl_channel_init(struct dram_para *para)
 
 	/* set dramc odt */
 	for (i = 0; i < 4; i++)
+#if defined(CONFIG_MACH_SUN50I_H5)
+		clrsetbits_le32(&mctl_ctl->datx[i].gcr, (0x3 << 4) |
+				(0x1 << 1) | (0x3 << 2) | (0x3 << 12) |
+				(0x3 << 14) | (0x2 << 8), (0x4 << 8) |
+				(IS_ENABLED(CONFIG_DRAM_ODT_EN) ? 0x0 : 0x2));
+#else
 		clrsetbits_le32(&mctl_ctl->datx[i].gcr, (0x3 << 4) |
 				(0x1 << 1) | (0x3 << 2) | (0x3 << 12) |
 				(0x3 << 14),
 				IS_ENABLED(CONFIG_DRAM_ODT_EN) ? 0x0 : 0x2);
+#endif
 
 	/* AC PDR should always ON */
+#if defined(CONFIG_MACH_SUN50I_H5)
+	clrsetbits_le32(&mctl_ctl->aciocr, 0x1 << 11, 0x1 << 1);
+#else
 	setbits_le32(&mctl_ctl->aciocr, 0x1 << 1);
+#endif
 
 	/* set DQS auto gating PD mode */
 	setbits_le32(&mctl_ctl->pgcr[2], 0x3 << 6);
@@ -358,9 +434,15 @@ static int mctl_channel_init(struct dram_para *para)
 	/* dx ddr_clk & hdr_clk dynamic mode */
 	clrbits_le32(&mctl_ctl->pgcr[0], (0x3 << 14) | (0x3 << 12));
 
+#if defined(CONFIG_MACH_SUN8I_H3_32)
 	/* dphy & aphy phase select 270 degree */
 	clrsetbits_le32(&mctl_ctl->pgcr[2], (0x3 << 10) | (0x3 << 8),
 			(0x1 << 10) | (0x2 << 8));
+#elif defined(CONFIG_MACH_SUN50I_H5)
+	/* dphy & aphy phase select ? degree */
+	clrsetbits_le32(&mctl_ctl->pgcr[2], (0x3 << 10) | (0x3 << 8),
+			(0x0 << 10) | (0x3 << 8));
+#endif
 
 	/* set half DQ */
 	if (para->bus_width != 32) {
@@ -372,16 +454,24 @@ static int mctl_channel_init(struct dram_para *para)
 	clrsetbits_le32(&mctl_ctl->dtcr, 0xf << 24,
 			(para->dual_rank ? 0x3 : 0x1) << 24);
 
-
-	if (para->read_delays || para->write_delays) {
+	if (para->read_delays || para->write_delays)
 		mctl_dq_delay(para->read_delays, para->write_delays);
+	if (para->ac_delays)
+		mctl_ac_delay(para->ac_delays);
+	if (para->read_delays || para->write_delays || para->ac_delays)
 		udelay(50);
-	}
 
+#if defined(CONFIG_MACH_SUN8I_H3_32)
 	mctl_zq_calibration(para);
 
 	mctl_phy_init(PIR_PLLINIT | PIR_DCAL | PIR_PHYRST | PIR_DRAMRST |
 		      PIR_DRAMINIT | PIR_QSGATE);
+#elif defined(CONFIG_MACH_SUN50I_H5)
+	clrsetbits_le32(&mctl_ctl->zqcr, 0xffffff, CONFIG_DRAM_ZQ);
+
+	mctl_phy_init(PIR_PLLINIT | PIR_DCAL | PIR_PHYRST | PIR_DRAMRST |
+		      PIR_DRAMINIT | PIR_ZCAL);
+#endif
 
 	/* detect ranks and bus width */
 	if (readl(&mctl_ctl->pgsr[0]) & (0xfe << 20)) {
@@ -419,7 +509,11 @@ static int mctl_channel_init(struct dram_para *para)
 	udelay(10);
 
 	/* set PGCR3, CKE polarity */
+#if defined(CONFIG_MACH_SUN8I_H3_32)
 	writel(0x00aa0060, &mctl_ctl->pgcr[3]);
+#else
+	writel(0xc0aa0060, &mctl_ctl->pgcr[3]);
+#endif
 
 	/* power down zq calibration module for power save */
 	setbits_le32(&mctl_ctl->zqcr, ZQCR_PWRDOWN);
@@ -458,8 +552,15 @@ unsigned long sunxi_dram_init(void)
 			(struct sunxi_mctl_ctl_reg *)SUNXI_DRAM_CTL0_BASE;
 
 	struct dram_para para = {
+#if defined(CONFIG_MACH_SUN8I_H3_32)
 		.read_delays = 0x00007979,	/* dram_tpr12 */
 		.write_delays = 0x6aaa0000,	/* dram_tpr11 */
+		.ac_delays = 0x00000000,
+#elif defined(CONFIG_MACH_SUN50I_H5)
+		.read_delays = 0x00008897,	/* dram_tpr12 */
+		.write_delays = 0x46660000,	/* dram_tpr11 */
+		.ac_delays = 0x00002535,	/* dram_tpr10 */
+#endif
 		.dual_rank = 0,
 		.bus_width = 32,
 		.row_bits = 15,
@@ -476,8 +577,15 @@ unsigned long sunxi_dram_init(void)
 		writel(0x00000201, &mctl_ctl->odtmap);
 	udelay(1);
 
+#if defined(CONFIG_MACH_SUN8I_H3_32)
 	/* odt delay */
 	writel(0x0c000400, &mctl_ctl->odtcfg);
+#endif
+
+#if defined(CONFIG_MACH_SUN50I_H5)
+	clrbits_le32(&mctl_ctl->pgcr[2], (1 << 13));
+	setbits_le32(&mctl_ctl->vtfcr, (3 << 8));
+#endif
 
 	/* clear credit value */
 	setbits_le32(&mctl_com->cccr, 1 << 31);

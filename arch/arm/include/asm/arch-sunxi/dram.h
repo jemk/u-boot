@@ -29,7 +29,7 @@
 #elif defined(CONFIG_MACH_SUN9I)
 #include <asm/arch/dram_sun9i.h>
 #elif defined(CONFIG_MACH_SUN50I_H5)
-#include <asm/arch/dram_libdram.h>
+#include <asm/arch/dram_sun8i_h3.h>
 #else
 #include <asm/arch/dram_sun4i.h>
 #endif
